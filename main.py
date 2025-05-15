@@ -4,24 +4,36 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Column, Integer, String
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError
-
 from pydantic import BaseModel
 from database import SessionLocal, engine, Base
 from auth import hash_password, verify_password, create_access_token, decode_access_token
+import logging
 
 # Initialize app
 app = FastAPI()
 
-# Allow frontend on localhost:3000 to communicate
+
+app = FastAPI()
+
+# ✅ ALLOW FRONTEND ORIGIN FROM VERCEL AND LOCALHOST
+origins = [
+    "https://mini-fullstack-frontend-cs99-5ugrs8tlk-ayokunle-ajepes-projects.vercel.app",
+    "http://localhost:5173"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=origins,         # only allow frontend origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# SQLAlchemy model
+# Optional root route for testing..
+
+
+
+# SQLAlchemy user model
 class UserDB(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -36,7 +48,7 @@ class User(BaseModel):
 # Initialize DB
 Base.metadata.create_all(bind=engine)
 
-# Dependency
+# Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
@@ -47,17 +59,29 @@ def get_db():
 # Auth scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
+# Logger
+logger = logging.getLogger("uvicorn.error")
+
 # Signup route
 @app.post("/signup")
 def signup(user: User, db: Session = Depends(get_db)):
-    existing = db.query(UserDB).filter(UserDB.username == user.username).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    hashed = hash_password(user.password)
-    new_user = UserDB(username=user.username, password=hashed)
-    db.add(new_user)
-    db.commit()
-    return {"message": "User created successfully"}
+    try:
+        # Check if the username already exists
+        existing = db.query(UserDB).filter(UserDB.username == user.username).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Username already exists")
+
+        # Hash the password and create a new user
+        hashed = hash_password(user.password)
+        new_user = UserDB(username=user.username, password=hashed)
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+
+        return {"message": "User created successfully", "user_id": new_user.id}
+    except Exception as e:
+        logger.error(f"Signup error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 # Login route
 @app.post("/login")
@@ -68,7 +92,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     token = create_access_token({"sub": user.username})
     return {"access_token": token, "token_type": "bearer"}
 
-# dashboard
+# Dashboard route
 @app.get("/dashboard")
 def dashboard(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
@@ -77,23 +101,25 @@ def dashboard(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
         if username is None:
             raise HTTPException(status_code=401, detail="Invalid token")
 
-        # ✅ Get all usernames from the database
         users = db.query(UserDB).all()
         usernames = [user.username for user in users]
-
-        # ✅ Return them as a list in a dictionary
         return {"users": usernames}
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# Protected: return all users
+# ✅ Hardcoded users route
 @app.get("/users")
-def get_users(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_users(token: str = Depends(oauth2_scheme)):
     try:
         payload = decode_access_token(token)
         username = payload.get("sub")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
-    
-    users = db.query(UserDB).all()
-    return [{"id": u.id, "username": u.username} for u in users]
+
+    # Hardcoded data
+    hardcoded_users = [
+        {"id": 1, "username": "alice"},
+        {"id": 2, "username": "bob"},
+        {"id": 3, "username": "charlie"},
+    ]
+    return {"users": hardcoded_users}
