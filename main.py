@@ -9,19 +9,18 @@ from database import SessionLocal, engine, Base
 from auth import hash_password, verify_password, create_access_token, decode_access_token
 import logging
 
-# Initialize app
+# ✅ Initialize app
 app = FastAPI()
 
-# ✅ Allow Vercel frontend and local dev frontend
+# ✅ CORS settings
 origins = [
     "https://mini-fullstack-frontend.vercel.app",
-    "http://localhost:5173",
+    "http://localhost:5173",  # Optional for local dev
 ]
 
-# ✅ Apply CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins,  # Don't use ["*"] in production with credentials
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,7 +41,7 @@ class User(BaseModel):
     username: str
     password: str
 
-# ✅ Create DB tables
+# ✅ Initialize DB
 Base.metadata.create_all(bind=engine)
 
 # ✅ Dependency to get DB session
@@ -56,21 +55,20 @@ def get_db():
 # ✅ Auth scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# ✅ Root route
+# ✅ Test route
 @app.get("/")
 def read_root():
     return {"message": "Hello from backend"}
 
-# ✅ Signup route
+# ✅ Signup route (only this version!)
 @app.post("/signup")
 def signup(user: User, db: Session = Depends(get_db)):
+    logger.info(f"Signup attempt for user: {user.username}")
     try:
-        # Check if the username already exists
         existing = db.query(UserDB).filter(UserDB.username == user.username).first()
         if existing:
             raise HTTPException(status_code=400, detail="Username already exists")
 
-        # Hash password and save new user
         hashed = hash_password(user.password)
         new_user = UserDB(username=user.username, password=hashed)
         db.add(new_user)
@@ -106,7 +104,7 @@ def dashboard(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# ✅ Hardcoded users route (optional test route)
+# ✅ Hardcoded users route
 @app.get("/users")
 def get_users(token: str = Depends(oauth2_scheme)):
     try:
