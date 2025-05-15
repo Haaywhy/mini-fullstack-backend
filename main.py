@@ -7,7 +7,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 
-# Models
+# ------------------- Models ------------------- #
 class User(BaseModel):
     id: int
     username: str
@@ -24,34 +24,37 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
-# App
+# ------------------- App Setup ------------------- #
 app = FastAPI()
-# ✅ CORS settings
+
+# ✅ CORS setup
 origins = [
-    "https://mini-fullstack-frontend.vercel.app",
-    "http://localhost:5173",  # Optional for local dev
+    "https://mini-fullstack-frontend.vercel.app",  # optional (if using this domain)
+    "https://mini-fullstack-frontend-cs99-5kdfk4wk1-ayokunle-ajepes-projects.vercel.app",  # ✅ your actual deployed frontend
+    "http://localhost:5173",  # for Vite dev
+    "http://localhost:3000",  # for CRA or other local dev
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Don't use ["*"] in production with credentials
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Auth setup
+# ------------------- Auth Setup ------------------- #
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_KEY = "your-secret-key"
+SECRET_KEY = "your-secret-key"  # change this in production!
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Fake DB
+# ------------------- Fake DB ------------------- #
 users_db = []
 id_counter = 1
 
-# Utils
+# ------------------- Utils ------------------- #
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
@@ -80,7 +83,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
-# Routes
+# ------------------- Routes ------------------- #
 @app.post("/signup")
 def signup(user: User):
     global id_counter
