@@ -26,16 +26,15 @@ class Token(BaseModel):
 
 # App
 app = FastAPI()
-
-# CORS: allow Vercel frontend
+# ✅ CORS settings
 origins = [
-    "http://localhost:5173",
-    "https://mini-fullstack-frontend-cs99-git-main-ayokunle-ajepes-projects.vercel.app"
+    "https://mini-fullstack-frontend.vercel.app",
+    "http://localhost:5173",  # Optional for local dev
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins,  # Don't use ["*"] in production with credentials
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
