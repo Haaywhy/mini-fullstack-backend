@@ -1,50 +1,50 @@
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from sqlalchemy import Column, Integer, String
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError
+from passlib.context import CryptContext
+from jose import JWTError, jwt
 from pydantic import BaseModel
-from database import SessionLocal, engine, Base
-from auth import hash_password, verify_password, create_access_token, decode_access_token
-import logging
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from typing import List
+import uvicorn
 
-# ✅ Initialize app
-app = FastAPI()
+# Database setup
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-# ✅ CORS settings
-origins = [
-    "https://mini-fullstack-frontend.vercel.app",
-    "http://localhost:5173",  # Optional for local dev
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,  # Don't use ["*"] in production with credentials
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ✅ Logger
-logger = logging.getLogger("uvicorn.error")
-
-# ✅ SQLAlchemy user model
-class UserDB(Base):
+# User model
+class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     password = Column(String)
 
-# ✅ Pydantic model
-class User(BaseModel):
+Base.metadata.create_all(bind=engine)
+
+# Pydantic models
+class UserCreate(BaseModel):
     username: str
     password: str
 
-# ✅ Initialize DB
-Base.metadata.create_all(bind=engine)
+class UserOut(BaseModel):
+    id: int
+    username: str
 
-# ✅ Dependency to get DB session
+    class Config:
+        orm_mode = True
+
+# Auth setup
+SECRET_KEY = "secretkey"  # Use a stronger one in production
+ALGORITHM = "HS256"
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+app = FastAPI()
+
+# Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
@@ -52,70 +52,53 @@ def get_db():
     finally:
         db.close()
 
-# ✅ Auth scheme
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+# Utility functions
+def get_password_hash(password):
+    return pwd_context.hash(password)
 
-# ✅ Test route
-@app.get("/")
-def read_root():
-    return {"message": "Hello from backend"}
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
 
-# ✅ Signup route (only this version!)
-@app.post("/signup")
-def signup(user: User, db: Session = Depends(get_db)):
-    logger.info(f"Signup attempt for user: {user.username}")
+def create_access_token(data: dict):
+    return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
-        existing = db.query(UserDB).filter(UserDB.username == user.username).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="Username already exists")
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
-        hashed = hash_password(user.password)
-        new_user = UserDB(username=user.username, password=hashed)
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    return user
 
-        return {"message": "User created successfully", "user_id": new_user.id}
-    except Exception as e:
-        logger.error(f"Signup error: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+# Routes
 
-# ✅ Login route
+@app.post("/signup")
+def signup(user: UserCreate, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.username == user.username).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    hashed_pw = get_password_hash(user.password)
+    new_user = User(username=user.username, password=hashed_pw)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"message": "User created successfully"}
+
 @app.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(UserDB).filter(UserDB.username == form_data.username).first()
+    user = db.query(User).filter(User.username == form_data.username).first()
     if not user or not verify_password(form_data.password, user.password):
-        raise HTTPException(status_code=400, detail="Invalid username or password")
+        raise HTTPException(status_code=400, detail="Invalid credentials")
     token = create_access_token({"sub": user.username})
     return {"access_token": token, "token_type": "bearer"}
 
-# ✅ Dashboard route
-@app.get("/dashboard")
-def dashboard(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        payload = decode_access_token(token)
-        username = payload.get("sub")
-        if username is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-        users = db.query(UserDB).all()
-        usernames = [user.username for user in users]
-        return {"users": usernames}
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-# ✅ Hardcoded users route
-@app.get("/users")
-def get_users(token: str = Depends(oauth2_scheme)):
-    try:
-        payload = decode_access_token(token)
-        username = payload.get("sub")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    hardcoded_users = [
-        {"id": 1, "username": "alice"},
-        {"id": 2, "username": "bob"},
-        {"id": 3, "username": "charlie"},
-    ]
-    return {"users": hardcoded_users}
+@app.get("/users", response_model=List[UserOut])
+def get_users(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    users = db.query(User).all()
+    return users
