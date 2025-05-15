@@ -12,43 +12,40 @@ import logging
 # Initialize app
 app = FastAPI()
 
-
-app = FastAPI()
-
-# ✅ ALLOW FRONTEND ORIGIN FROM VERCEL AND LOCALHOST
+# ✅ Allow Vercel frontend and local dev frontend
 origins = [
-    "https://mini-fullstack-frontend-cs99-5ugrs8tlk-ayokunle-ajepes-projects.vercel.app",
-    "http://localhost:5173"
+    "https://mini-fullstack-frontend.vercel.app",
+    "http://localhost:5173",
 ]
 
+# ✅ Apply CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,         # only allow frontend origins
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Optional root route for testing..
+# ✅ Logger
+logger = logging.getLogger("uvicorn.error")
 
-
-
-# SQLAlchemy user model
+# ✅ SQLAlchemy user model
 class UserDB(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     password = Column(String)
 
-# Pydantic model
+# ✅ Pydantic model
 class User(BaseModel):
     username: str
     password: str
 
-# Initialize DB
+# ✅ Create DB tables
 Base.metadata.create_all(bind=engine)
 
-# Dependency to get DB session
+# ✅ Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
@@ -56,13 +53,15 @@ def get_db():
     finally:
         db.close()
 
-# Auth scheme
+# ✅ Auth scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# Logger
-logger = logging.getLogger("uvicorn.error")
+# ✅ Root route
+@app.get("/")
+def read_root():
+    return {"message": "Hello from backend"}
 
-# Signup route
+# ✅ Signup route
 @app.post("/signup")
 def signup(user: User, db: Session = Depends(get_db)):
     try:
@@ -71,7 +70,7 @@ def signup(user: User, db: Session = Depends(get_db)):
         if existing:
             raise HTTPException(status_code=400, detail="Username already exists")
 
-        # Hash the password and create a new user
+        # Hash password and save new user
         hashed = hash_password(user.password)
         new_user = UserDB(username=user.username, password=hashed)
         db.add(new_user)
@@ -83,7 +82,7 @@ def signup(user: User, db: Session = Depends(get_db)):
         logger.error(f"Signup error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# Login route
+# ✅ Login route
 @app.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(UserDB).filter(UserDB.username == form_data.username).first()
@@ -92,7 +91,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     token = create_access_token({"sub": user.username})
     return {"access_token": token, "token_type": "bearer"}
 
-# Dashboard route
+# ✅ Dashboard route
 @app.get("/dashboard")
 def dashboard(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
@@ -107,7 +106,7 @@ def dashboard(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# ✅ Hardcoded users route
+# ✅ Hardcoded users route (optional test route)
 @app.get("/users")
 def get_users(token: str = Depends(oauth2_scheme)):
     try:
@@ -116,7 +115,6 @@ def get_users(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    # Hardcoded data
     hardcoded_users = [
         {"id": 1, "username": "alice"},
         {"id": 2, "username": "bob"},
