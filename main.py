@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -9,9 +9,9 @@ from datetime import datetime, timedelta
 
 # ------------------- Models ------------------- #
 class User(BaseModel):
-    id: int
     username: str
     password: str
+    full_name: str  # ✅ added full name here
 
 class UserInDB(User):
     hashed_password: str
@@ -19,6 +19,7 @@ class UserInDB(User):
 class UserOut(BaseModel):
     id: int
     username: str
+    full_name: str  # ✅ include full name in user output
 
 class Token(BaseModel):
     access_token: str
@@ -29,10 +30,10 @@ app = FastAPI()
 
 # ✅ CORS setup
 origins = [
-    "https://mini-fullstack-frontend.vercel.app",  # optional (if using this domain)
-    "https://mini-fullstack-frontend-cs99-5kdfk4wk1-ayokunle-ajepes-projects.vercel.app",  # ✅ your actual deployed frontend
-    "http://localhost:5173",  # for Vite dev
-    "http://localhost:3000",  # for CRA or other local dev
+    "https://mini-fullstack-frontend.vercel.app",
+    "https://mini-fullstack-frontend-cs99-5kdfk4wk1-ayokunle-ajepes-projects.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
 ]
 
 app.add_middleware(
@@ -46,7 +47,7 @@ app.add_middleware(
 # ------------------- Auth Setup ------------------- #
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_KEY = "your-secret-key"  # change this in production!
+SECRET_KEY = "your-secret-key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -84,8 +85,9 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     return user
 
 # ------------------- Routes ------------------- #
+
 @app.post("/signup")
-def signup(user: User):
+def signup(user: User = Body(...)):
     global id_counter
     if get_user(user.username):
         raise HTTPException(status_code=400, detail="Username already exists")
@@ -93,6 +95,7 @@ def signup(user: User):
     users_db.append({
         "id": id_counter,
         "username": user.username,
+        "full_name": user.full_name,  # ✅ store full name
         "hashed_password": hashed_password,
     })
     id_counter += 1
@@ -108,4 +111,4 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 @app.get("/users", response_model=List[UserOut])
 def get_users(current_user: dict = Depends(get_current_user)):
-    return [{"id": u["id"], "username": u["username"]} for u in users_db]
+    return [{"id": u["id"], "username": u["username"], "full_name": u["full_name"]} for u in users_db]
