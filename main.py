@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
@@ -11,15 +11,19 @@ from datetime import datetime, timedelta
 class User(BaseModel):
     username: str
     password: str
-    full_name: str  # ✅ added full name here
+    full_name: str
+    role: Optional[str] = "user"  # default to 'user'
 
 class UserInDB(User):
     hashed_password: str
+    is_active: bool = False
 
 class UserOut(BaseModel):
     id: int
     username: str
-    full_name: str  # ✅ include full name in user output
+    full_name: str
+    role: str
+    is_active: bool
 
 class Token(BaseModel):
     access_token: str
@@ -28,7 +32,6 @@ class Token(BaseModel):
 # ------------------- App Setup ------------------- #
 app = FastAPI()
 
-# ✅ CORS setup
 origins = [
     "https://mini-fullstack-frontend.vercel.app",
     "https://mini-fullstack-frontend-cs99-5kdfk4wk1-ayokunle-ajepes-projects.vercel.app",
@@ -84,6 +87,11 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
+def require_role(current_user: dict, required_role: str):
+    roles = ["user", "admin", "superadmin"]
+    if roles.index(current_user["role"]) < roles.index(required_role):
+        raise HTTPException(status_code=403, detail=f"{required_role} access required")
+
 # ------------------- Routes ------------------- #
 
 @app.post("/signup")
@@ -95,20 +103,71 @@ def signup(user: User = Body(...)):
     users_db.append({
         "id": id_counter,
         "username": user.username,
-        "full_name": user.full_name,  # ✅ store full name
+        "full_name": user.full_name,
         "hashed_password": hashed_password,
+        "role": user.role,
+        "is_active": False if user.role != "superadmin" else True
     })
     id_counter += 1
-    return {"msg": "User created successfully"}
+    return {"msg": "User created successfully. Awaiting activation."}
 
 @app.post("/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = get_user(form_data.username)
     if not user or not verify_password(form_data.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
+    if not user.get("is_active"):
+        raise HTTPException(status_code=403, detail="Account not yet activated")
     access_token = create_access_token(data={"sub": user["username"]})
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/users", response_model=List[UserOut])
 def get_users(current_user: dict = Depends(get_current_user)):
-    return [{"id": u["id"], "username": u["username"], "full_name": u["full_name"]} for u in users_db]
+    return [
+        {
+            "id": u["id"],
+            "username": u["username"],
+            "full_name": u["full_name"],
+            "role": u["role"],
+            "is_active": u["is_active"]
+        }
+        for u in users_db
+    ]
+
+@app.put("/profile")
+def update_profile(full_name: str = Body(...), password: Optional[str] = Body(None), current_user: dict = Depends(get_current_user)):
+    current_user["full_name"] = full_name
+    if password:
+        current_user["hashed_password"] = get_password_hash(password)
+    return {"msg": "Profile updated successfully"}
+
+@app.delete("/profile")
+def delete_profile(current_user: dict = Depends(get_current_user)):
+    raise HTTPException(status_code=403, detail="You cannot delete your own account")
+
+@app.delete("/admin/delete-user/{username}")
+def admin_delete_user(username: str, current_user: dict = Depends(get_current_user)):
+    require_role(current_user, "admin")
+    if username == current_user["username"]:
+        raise HTTPException(status_code=403, detail="You cannot delete your own account")
+    user = get_user(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    users_db.remove(user)
+    return {"msg": f"User '{username}' deleted successfully"}
+
+@app.put("/admin/activate-user/{username}")
+def activate_user(username: str, current_user: dict = Depends(get_current_user)):
+    require_role(current_user, "admin")
+    user = get_user(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user["role"] == "admin":
+        require_role(current_user, "superadmin")
+    user["is_active"] = True
+    return {"msg": f"{username} activated successfully"}
+
+@app.get("/superadmin/feature")
+def superadmin_only(current_user: dict = Depends(get_current_user)):
+    require_role(current_user, "superadmin")
+    return {"msg": "Superadmin-only feature accessed"}
