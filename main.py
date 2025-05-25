@@ -1,3 +1,4 @@
+# ------------------- Updated main.py -------------------
 from fastapi import FastAPI, HTTPException, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -12,7 +13,7 @@ class User(BaseModel):
     username: str
     password: str
     full_name: str
-    role: Optional[str] = "user"  # default to 'user'
+    role: Optional[str] = "user"
 
 class UserInDB(User):
     hashed_password: str
@@ -93,16 +94,21 @@ def signup(user: User = Body(...)):
     if get_user(user.username):
         raise HTTPException(status_code=400, detail="Username already exists")
     hashed_password = get_password_hash(user.password)
+    is_active = True if user.role == "superadmin" else False
     users_db.append({
         "id": id_counter,
         "username": user.username,
         "full_name": user.full_name,
         "hashed_password": hashed_password,
         "role": user.role,
-        "is_active": False if user.role != "superadmin" else True
+        "is_active": is_active
     })
     id_counter += 1
-    return {"msg": "User created successfully. Awaiting activation."}
+
+    if user.role == "superadmin":
+        return {"msg": "Superadmin created and activated automatically."}
+    else:
+        return {"msg": "User created successfully. Awaiting activation."}
 
 @app.post("/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -110,7 +116,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     if not user or not verify_password(form_data.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     if not user.get("is_active"):
-        raise HTTPException(status_code=403, detail="Account not yet activated")
+        raise HTTPException(status_code=403, detail="Your account is not yet activated. Please contact an admin")
     access_token = create_access_token(data={"sub": user["username"]})
     return {"access_token": access_token, "token_type": "bearer"}
 
