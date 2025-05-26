@@ -93,10 +93,11 @@ def signup(user: User = Body(...)):
     global id_counter
     if get_user(user.username):
         raise HTTPException(status_code=400, detail="Username already exists")
-    
+
     hashed_password = get_password_hash(user.password)
-    
-    is_active = True if user.role == "superadmin" else False
+
+    # Determine if the user should be auto-activated
+    auto_activate = user.role == "superadmin"
 
     new_user = {
         "id": id_counter,
@@ -104,16 +105,17 @@ def signup(user: User = Body(...)):
         "full_name": user.full_name,
         "hashed_password": hashed_password,
         "role": user.role,
-        "is_active": is_active
+        "is_active": auto_activate
     }
 
     users_db.append(new_user)
     id_counter += 1
 
-    if user.role == "superadmin":
+    if auto_activate:
         return {"msg": "Superadmin created and activated automatically."}
     else:
         return {"msg": "User created successfully. Awaiting activation."}
+
 
 
 @app.post("/token", response_model=Token)
