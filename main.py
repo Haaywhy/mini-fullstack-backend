@@ -93,22 +93,28 @@ def signup(user: User = Body(...)):
     global id_counter
     if get_user(user.username):
         raise HTTPException(status_code=400, detail="Username already exists")
+    
     hashed_password = get_password_hash(user.password)
+    
     is_active = True if user.role == "superadmin" else False
-    users_db.append({
+
+    new_user = {
         "id": id_counter,
         "username": user.username,
         "full_name": user.full_name,
         "hashed_password": hashed_password,
         "role": user.role,
         "is_active": is_active
-    })
+    }
+
+    users_db.append(new_user)
     id_counter += 1
 
     if user.role == "superadmin":
         return {"msg": "Superadmin created and activated automatically."}
     else:
         return {"msg": "User created successfully. Awaiting activation."}
+
 
 @app.post("/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
