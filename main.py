@@ -1,4 +1,3 @@
-# ------------------- Updated main.py -------------------
 from fastapi import FastAPI, HTTPException, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -95,8 +94,6 @@ def signup(user: User = Body(...)):
         raise HTTPException(status_code=400, detail="Username already exists")
 
     hashed_password = get_password_hash(user.password)
-
-    # Determine if the user should be auto-activated
     auto_activate = user.role == "superadmin"
 
     new_user = {
@@ -115,8 +112,6 @@ def signup(user: User = Body(...)):
         return {"msg": "Superadmin created and activated automatically."}
     else:
         return {"msg": "User created successfully. Awaiting activation."}
-
-
 
 @app.post("/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -142,7 +137,11 @@ def get_users(current_user: dict = Depends(get_current_user)):
     ]
 
 @app.put("/profile")
-def update_profile(full_name: str = Body(...), password: Optional[str] = Body(None), current_user: dict = Depends(get_current_user)):
+def update_profile(
+    full_name: str = Body(...),
+    password: Optional[str] = Body(None),
+    current_user: dict = Depends(get_current_user)
+):
     current_user["full_name"] = full_name
     if password:
         current_user["hashed_password"] = get_password_hash(password)
