@@ -88,29 +88,30 @@ def require_role(current_user: dict, required_role: str):
 # ------------------- Routes ------------------- #
 
 @app.post("/signup")
-def signup(user: dict = Body(...)):
+def signup(user: User = Body(...)):
     global id_counter
-
-    if get_user(user["username"]):
+    if get_user(user.username):
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    role = user.get("role", "user")
-    auto_activate = role == "superadmin"
+    hashed_password = get_password_hash(user.password)
+
+    # Superadmin is auto-activated, others are not
+    is_active = user.role == "superadmin"
 
     new_user = {
         "id": id_counter,
-        "username": user["username"],
-        "full_name": user["full_name"],
-        "hashed_password": get_password_hash(user["password"]),
-        "role": role,
-        "is_active": auto_activate
+        "username": user.username,
+        "full_name": user.full_name,
+        "hashed_password": hashed_password,
+        "role": user.role,
+        "is_active": is_active
     }
 
     users_db.append(new_user)
     id_counter += 1
 
-    if auto_activate:
-        return {"msg": "Superadmin created and activated automatically."}
+    if is_active:
+        return {"msg": "Superadmin activated successfully"}
     else:
         return {"msg": "User created successfully. Awaiting activation."}
 
@@ -118,8 +119,11 @@ def signup(user: dict = Body(...)):
 @app.post("/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = get_user(form_data.username)
-    print("User at login:", user)  # ← Debug line
-
+    
+    # DEBUG: Confirm data in user dict
+    if user:
+        print("DEBUG login - user:", user)
+    
     if not user or not verify_password(form_data.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
@@ -128,6 +132,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
     access_token = create_access_token(data={"sub": user["username"]})
     return {"access_token": access_token, "token_type": "bearer"}
+
 
 @app.get("/users", response_model=List[UserOut])
 def get_users(current_user: dict = Depends(get_current_user)):
