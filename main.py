@@ -28,6 +28,8 @@ class UserOut(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    is_active: bool
+    role: str
 
 # ------------------- App Setup ------------------- #
 app = FastAPI()
@@ -95,9 +97,6 @@ def signup(user: User = Body(...)):
 
     hashed_password = get_password_hash(user.password)
 
-    # Debug print role and activation status
-    print(f"Signup attempt: role={user.role}, is_active={user.role == 'superadmin'}")
-
     # Superadmin is auto-activated, others are not
     is_active = user.role == "superadmin"
 
@@ -122,11 +121,7 @@ def signup(user: User = Body(...)):
 @app.post("/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = get_user(form_data.username)
-    
-    # DEBUG: Confirm data in user dict
-    if user:
-        print("DEBUG login - user:", user)
-    
+
     if not user or not verify_password(form_data.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
