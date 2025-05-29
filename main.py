@@ -118,10 +118,14 @@ def signup(user: dict = Body(...)):
 @app.post("/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = get_user(form_data.username)
+    print("User at login:", user)  # ← Debug line
+
     if not user or not verify_password(form_data.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
+
     if not user.get("is_active"):
         raise HTTPException(status_code=403, detail="Your account is not yet activated. Please contact an admin")
+
     access_token = create_access_token(data={"sub": user["username"]})
     return {"access_token": access_token, "token_type": "bearer"}
 
