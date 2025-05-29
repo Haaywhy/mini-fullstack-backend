@@ -95,6 +95,9 @@ def signup(user: User = Body(...)):
 
     hashed_password = get_password_hash(user.password)
 
+    # Debug print role and activation status
+    print(f"Signup attempt: role={user.role}, is_active={user.role == 'superadmin'}")
+
     # Superadmin is auto-activated, others are not
     is_active = user.role == "superadmin"
 
