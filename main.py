@@ -88,20 +88,21 @@ def require_role(current_user: dict, required_role: str):
 # ------------------- Routes ------------------- #
 
 @app.post("/signup")
-def signup(user: User = Body(...)):
+def signup(user: dict = Body(...)):
     global id_counter
-    if get_user(user.username):
+
+    if get_user(user["username"]):
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    hashed_password = get_password_hash(user.password)
-    auto_activate = user.role == "superadmin"
+    role = user.get("role", "user")
+    auto_activate = role == "superadmin"
 
     new_user = {
         "id": id_counter,
-        "username": user.username,
-        "full_name": user.full_name,
-        "hashed_password": hashed_password,
-        "role": user.role,
+        "username": user["username"],
+        "full_name": user["full_name"],
+        "hashed_password": get_password_hash(user["password"]),
+        "role": role,
         "is_active": auto_activate
     }
 
@@ -112,6 +113,7 @@ def signup(user: User = Body(...)):
         return {"msg": "Superadmin created and activated automatically."}
     else:
         return {"msg": "User created successfully. Awaiting activation."}
+
 
 @app.post("/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
