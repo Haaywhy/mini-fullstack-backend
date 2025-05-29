@@ -131,7 +131,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=403, detail="Your account is not yet activated. Please contact an admin")
 
     access_token = create_access_token(data={"sub": user["username"]})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "is_active": user.get("is_active")}
 
 
 @app.get("/users", response_model=List[UserOut])
