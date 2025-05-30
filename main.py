@@ -97,8 +97,7 @@ def signup(user: User = Body(...)):
 
     hashed_password = get_password_hash(user.password)
 
-    # Superadmin is auto-activated, others are not
-    is_active = user.role == "superadmin"
+    is_active = user.role == "superadmin"  # Superadmin auto-activated
 
     new_user = {
         "id": id_counter,
@@ -112,10 +111,7 @@ def signup(user: User = Body(...)):
     users_db.append(new_user)
     id_counter += 1
 
-    if is_active:
-        return {"msg": "Superadmin activated successfully"}
-    else:
-        return {"msg": "User created successfully. Awaiting activation."}
+    return {"msg": "Account created successfully. Awaiting activation." if not is_active else "Superadmin created and activated."}
 
 
 @app.post("/token", response_model=Token)
@@ -126,19 +122,19 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
     if not user.get("is_active"):
-        raise HTTPException(status_code=403, detail="Your account is not yet activated. Please contact an admin")
+        raise HTTPException(status_code=403, detail="Your account is not yet activated.")
 
     access_token = create_access_token(data={"sub": user["username"]})
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "is_active": user.get("is_active"),
-        "role": user.get("role")
+        "is_active": user["is_active"],
+        "role": user["role"]
     }
-
 
 @app.get("/users", response_model=List[UserOut])
 def get_users(current_user: dict = Depends(get_current_user)):
+    require_role(current_user, "superadmin")
     return [
         {
             "id": u["id"],
@@ -149,6 +145,15 @@ def get_users(current_user: dict = Depends(get_current_user)):
         }
         for u in users_db
     ]
+
+@app.post("/activate/{user_id}")
+def activate_user(user_id: int, current_user: dict = Depends(get_current_user)):
+    require_role(current_user, "superadmin")
+    user = next((u for u in users_db if u["id"] == user_id), None)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user["is_active"] = True
+    return {"msg": f"User {user['username']} activated successfully"}
 
 @app.put("/profile")
 def update_profile(
@@ -175,17 +180,6 @@ def admin_delete_user(username: str, current_user: dict = Depends(get_current_us
         raise HTTPException(status_code=404, detail="User not found")
     users_db.remove(user)
     return {"msg": f"User '{username}' deleted successfully"}
-
-@app.put("/admin/activate-user/{username}")
-def activate_user(username: str, current_user: dict = Depends(get_current_user)):
-    require_role(current_user, "admin")
-    user = get_user(username)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if user["role"] == "admin":
-        require_role(current_user, "superadmin")
-    user["is_active"] = True
-    return {"msg": f"{username} activated successfully"}
 
 @app.get("/superadmin/feature")
 def superadmin_only(current_user: dict = Depends(get_current_user)):
