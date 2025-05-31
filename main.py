@@ -96,7 +96,6 @@ def signup(user: User = Body(...)):
         raise HTTPException(status_code=400, detail="Username already exists")
 
     hashed_password = get_password_hash(user.password)
-
     is_active = user.role == "superadmin"  # Superadmin auto-activated
 
     new_user = {
@@ -130,6 +129,16 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         "token_type": "bearer",
         "is_active": user["is_active"],
         "role": user["role"]
+    }
+
+@app.get("/me", response_model=UserOut)
+def read_users_me(current_user: dict = Depends(get_current_user)):
+    return {
+        "id": current_user["id"],
+        "username": current_user["username"],
+        "full_name": current_user["full_name"],
+        "role": current_user["role"],
+        "is_active": current_user["is_active"]
     }
 
 @app.get("/users", response_model=List[UserOut])
