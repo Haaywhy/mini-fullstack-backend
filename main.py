@@ -112,7 +112,6 @@ def signup(user: User = Body(...)):
 
     return {"msg": "Account created successfully. Awaiting activation." if not is_active else "Superadmin created and activated."}
 
-
 @app.post("/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = get_user(form_data.username)
@@ -194,3 +193,4 @@ def admin_delete_user(username: str, current_user: dict = Depends(get_current_us
 def superadmin_only(current_user: dict = Depends(get_current_user)):
     require_role(current_user, "superadmin")
     return {"msg": "Superadmin-only feature accessed"}
+            
