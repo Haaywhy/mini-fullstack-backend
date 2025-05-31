@@ -36,11 +36,14 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=[
+        "https://mini-fullstack-frontend-cs99-git-main-ayokunle-ajepes-projects.vercel.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ------------------- Auth Setup ------------------- #
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
