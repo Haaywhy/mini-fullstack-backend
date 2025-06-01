@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Body
+from fastapi import FastAPI, HTTPException, Depends, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -6,6 +6,7 @@ from typing import List, Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
+from fastapi.openapi.utils import get_openapi
 
 # ------------------- Models ------------------- #
 class User(BaseModel):
@@ -44,6 +45,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="Mini Fullstack API",
+        version="1.0.0",
+        description="API with RBAC using FastAPI",
+        routes=app.routes,
+    )
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT"
+        }
+    }
+    for path in openapi_schema["paths"].values():
+        for operation in path.values():
+            operation["security"] = [{"BearerAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # ------------------- Auth Setup ------------------- #
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -157,8 +181,11 @@ def get_users(current_user: dict = Depends(get_current_user)):
         for u in users_db
     ]
 
-@app.post("/activate/{user_id}")
-def activate_user(user_id: int, current_user: dict = Depends(get_current_user)):
+@app.post("/activate")
+def activate_user(
+    user_id: int = Query(..., description="ID of the user to activate"),
+    current_user: dict = Depends(get_current_user)
+):
     require_role(current_user, "superadmin")
     user = next((u for u in users_db if u["id"] == user_id), None)
     if not user:
@@ -196,4 +223,3 @@ def admin_delete_user(username: str, current_user: dict = Depends(get_current_us
 def superadmin_only(current_user: dict = Depends(get_current_user)):
     require_role(current_user, "superadmin")
     return {"msg": "Superadmin-only feature accessed"}
-            
